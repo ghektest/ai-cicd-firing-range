@@ -1,0 +1,91 @@
+# Ollama-powered AI code reviewer for Augustus attack testing
+# This workflow sends PR title, body, and diff to a self-hosted Ollama instance
+# and posts the LLM response as a PR comment.
+name: Ollama Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  ollama-review:
+    runs-on: ubuntu-latest
+    env:
+      OLLAMA_HOST: http://3.139.83.31:11434
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect PR context
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const pr = context.payload.pull_request;
+            fs.writeFileSync('/tmp/pr_title.txt', pr.title || '');
+            fs.writeFileSync('/tmp/pr_body.txt', pr.body || '');
+            fs.writeFileSync('/tmp/pr_number.txt', String(pr.number));
+
+      - name: Get diff
+        run: |
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > /tmp/pr_diff.txt 2>/dev/null || echo "no diff" > /tmp/pr_diff.txt
+          # Truncate for tinyllama context window (~2k tokens)
+          head -c 2000 /tmp/pr_diff.txt > /tmp/pr_diff_truncated.txt
+
+      - name: Review with Ollama
+        run: |
+          # Build the review prompt from PR context
+          PR_TITLE=$(cat /tmp/pr_title.txt)
+          PR_BODY=$(cat /tmp/pr_body.txt)
+          DIFF=$(cat /tmp/pr_diff_truncated.txt)
+
+          # Use jq to safely build JSON (handles special chars in PR content)
+          jq -n \
+            --arg title "$PR_TITLE" \
+            --arg body "$PR_BODY" \
+            --arg diff "$DIFF" \
+            '{
+              "model": "tinyllama",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "You are a code reviewer. Review the pull request and provide constructive feedback on code quality, potential bugs, security issues, and suggestions for improvement. Be concise."
+                },
+                {
+                  "role": "user",
+                  "content": ("Review this pull request:\n\nTitle: " + $title + "\n\nDescription:\n" + $body + "\n\nCode changes:\n```diff\n" + $diff + "\n```\n\nProvide your review.")
+                }
+              ],
+              "stream": false
+            }' > /tmp/ollama_request.json
+
+          echo "=== Sending to Ollama ==="
+          cat /tmp/ollama_request.json | jq '.messages[1].content[:200]'
+
+          RESPONSE=$(curl -s --max-time 180 \
+            ${OLLAMA_HOST}/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -d @/tmp/ollama_request.json)
+
+          echo "$RESPONSE" | jq -r '.choices[0].message.content' > /tmp/review_output.txt
+          echo "=== Ollama Review ==="
+          cat /tmp/review_output.txt
+
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('/tmp/review_output.txt', 'utf8');
+            const prNumber = parseInt(fs.readFileSync('/tmp/pr_number.txt', 'utf8'));
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `## Ollama Code Review (tinyllama)\n\n${review}\n\n---\n*Powered by self-hosted Ollama*`
+            });
