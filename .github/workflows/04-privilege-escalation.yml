@@ -1,0 +1,28 @@
+# DETECTION: ai_privilege_escalation (HIGH)
+# AI action on untrusted trigger with admin/members/org permissions
+# Trigger: issue_comment (AI trigger) -> AI action with admin permissions
+name: AI Admin Bot
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  members: write
+  administration: write
+  contents: read
+
+jobs:
+  admin-action:
+    if: contains(github.event.comment.body, '/admin')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI Admin Assistant
+        uses: openai/chatgpt-action@v1
+        with:
+          command: ${{ github.event.comment.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -1,0 +1,26 @@
+# DETECTION: ai_workflow_sabotage (HIGH)
+# AI action with actions:write on dangerous trigger
+# Trigger: issue_comment -> AI with actions:write -> can modify workflows
+name: AI Workflow Manager
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  manage-workflows:
+    if: contains(github.event.comment.body, '/workflow')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI Workflow Assistant
+        uses: copilot/workflow-assistant@v1
+        with:
+          instruction: ${{ github.event.comment.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

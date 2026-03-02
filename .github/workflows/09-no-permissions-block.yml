@@ -1,0 +1,23 @@
+# DETECTION: ai_supply_chain_poisoning (CRITICAL) via missing permissions block
+# When no permissions block is specified, GitHub defaults to read+write for all
+# This tests the nil permissions bug fix in the branch
+name: AI Review No Permissions
+
+on:
+  pull_request_target:
+    types: [opened]
+
+# NOTE: No permissions block = default read+write (dangerous)
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI Auto Review
+        uses: coderabbitai/ai-pr-reviewer@v1
+        with:
+          summary: ${{ github.event.pull_request.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,34 @@
+# DETECTION: ai_supply_chain_poisoning (CRITICAL)
+# AI action with packages:write or contents:write + untrusted input
+# Trigger: pull_request_target -> AI with write perms -> can modify repo contents
+name: AI Auto-Merge Bot
+
+on:
+  pull_request_target:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: AI Review and Auto-Merge
+        uses: coderabbitai/ai-pr-reviewer@v1
+        with:
+          auto_merge: true
+          pr_description: ${{ github.event.pull_request.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Package
+        run: |
+          echo "Publishing based on: ${{ github.event.pull_request.title }}"
+          npm publish

@@ -1,0 +1,28 @@
+# DETECTION: ai_mcp_abuse (HIGH)
+# AI action with Model Context Protocol indicators + token access
+# MCP enables AI to call external tools, expanding attack surface
+name: AI with MCP Tools
+
+on:
+  pull_request_target:
+    types: [opened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  mcp-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI Review with MCP
+        uses: claude-ai/code-review-action@v1
+        with:
+          pr_body: ${{ github.event.pull_request.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MCP_SERVER_URL: https://mcp.example.com
+          MODEL_CONTEXT_PROTOCOL: enabled
